@@ -858,6 +858,7 @@ function currentShipList(){
   const cty=COLIS[state.country]?state.country:'WORLD';
   if(!isColis()){
     const lt=[{k:'std',ot:state.country==='FR'?'Standard':'Envoi suivi',od:state.country==='FR'?'3-5 jours ouvrés':'5-10 jours ouvrés',delay:state.country==='FR'?5:0,price:LETTRE[cty]}];
+    if(state.country==='FR')lt.push({k:'retrait',ot:'Retrait à Montrouge',od:'20 rue Périer · lun.-ven. 10h-16h',price:0,pickup:true}); // retrait proposé pour tout panier en France (Samuel 24/09)
     return lt;
   }
   const n=coffretCount();
@@ -1075,6 +1076,7 @@ function renderAdrSub(){
   const nbC=coffretCount(),nbA=state.items.filter(i=>i.type==='accessory').length;
   const parts=[];
   if(nbC>0)parts.push(nbC>1?'vos Coffrets':'votre Coffret');
+  const nbK=astroCount();if(nbK>0)parts.push(nbK>1?'vos Kube Astro':'votre Kube Astro');
   if(nbA>0)parts.push(nbA>1?'vos accessoires':'votre accessoire');
   let txt=state.ship==='retrait'
     ?'Indiquez le nom de la personne qui vient chercher '+(parts.length?parts.join(' et '):'vos articles')+'.'
