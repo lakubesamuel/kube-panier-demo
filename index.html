@@ -438,6 +438,8 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 .klhint{display:none;align-items:center;gap:8px;font-size:12px;color:var(--ink2);margin:10px 2px 0;}
 #cartBlock>.klhint{margin:-12px 2px 20px;}
 .klhint b{color:var(--ink);font-weight:600;}
+.klhint .kx{color:var(--eyebrow);font-size:11px;} /* exclusion en sable, plus petite (choix Samuel 19/10, version 3) */
+.klhint .nw{white-space:nowrap;}
 /* carte cadeau : adresse destinataire editable inline (formule/duree = configurateur) */
 .ccedit{border:0;background:none;color:var(--ink2);font:600 11.5px 'DM Sans';text-decoration:underline;text-underline-offset:2px;cursor:pointer;padding:0;margin-left:6px;}
 /* panneau adresse CC (design A valide 19/08) : blanc, soude sous la ligne, ouvert/ferme par softVis */
@@ -508,7 +510,18 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 .pm-tab{flex:1;border:1.5px solid var(--line-strong);background:#fff;border-radius:9px;padding:10px 12px;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left;transition:border-color .2s ease,background .2s ease;}
 .pm-tab small{display:block;font-weight:500;font-size:11px;color:var(--mute);margin-top:2px;}
 .pm-tab.on{border-color:var(--ink);background:#FBFAF8;box-shadow:inset 0 0 0 1px var(--ink);}
-.pm-tab .kbadge{display:inline-block;background:#FFB3C7;color:#17120F;font-weight:700;border-radius:4px;padding:1px 6px;font-size:10.5px;margin-right:2px;}
+.pm-tab .kbadge,.ab-kl .kbadge{display:inline-block;background:#FFB3C7;color:#17120F;font-weight:700;border-radius:4px;padding:1px 6px;font-size:10.5px;margin-right:2px;}
+/* picker abo, etape 2 : choix de la formule (19/10) */
+.ab-plans{grid-column:1/-1;display:flex;flex-direction:column;gap:10px;}
+.ab-back{align-self:flex-start;}
+.ab-t{font-family:var(--serif);font-size:19px;font-weight:600;margin:2px 0 4px;}
+.ab-plan{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;width:100%;text-align:left;border:1.5px solid var(--line-strong);background:#fff;border-radius:11px;padding:14px 15px;cursor:pointer;font-family:var(--sans);color:var(--ink);transition:border-color .2s ease,background .2s ease;}
+.ab-plan:hover,.ab-plan:focus-visible{border-color:var(--ink);background:#FBFAF8;}
+.ab-pl{font-size:14.5px;font-weight:600;display:flex;flex-direction:column;gap:3px;}
+.ab-pl small{font-weight:500;font-size:12px;color:var(--mute);}
+.ab-kl{display:flex;align-items:center;gap:6px;font-weight:500;font-size:12px;color:var(--ink2);margin-top:3px;}
+.ab-pr{font-size:14.5px;font-weight:700;white-space:nowrap;}
+.ab-note{font-size:12px;color:var(--mute);margin-top:2px;}
 .pay-klarna{border:1.5px solid var(--line);border-radius:11px;padding:15px;background:#FBFAF8;font-size:13px;color:var(--ink2);line-height:1.55;}
 .pay-klarna b{color:var(--ink);}
 
@@ -877,7 +890,9 @@ function ccTotal(i){return i.aboPrice+(i.ecrin?i.ecrinPrice:0);}
 function scnSolo(){state.items=[coffret('Le Coffret livres Chat')];}
 function scnCC(){scnSolo();state.items.push(ccItem(ABOS[0]));}
 function scnMulti(){scnSolo();state.items.push(coffret('Le Coffret livres Polar'));}
-function aboItem(abo,fam){return {type:'abo',name:'Abonnement '+abo.k,aboImg:CCIMG[abo.k],isKJ:abo.key==='kj',cadence:'Prélèvement tous les ans',myAddr:'75011 Paris',note:fam?'Offre famille · frais de port offerts':'résiliable',price:abo.pa};}
+// monthly : formule mensuelle (NH = trimestriel, jamais "mensuel"). Klarna 3x indisponible si un abo mensuel est au panier (test bac a sable 19/10).
+function aboItem(abo,fam,monthly){const nh=abo.key==='nh';const m=!!monthly;return {type:'abo',name:'Abonnement '+abo.k,aboImg:CCIMG[abo.k],isKJ:abo.key==='kj',monthly:m&&!nh,cadence:m?(nh?'Prélèvement tous les 3 mois':'Prélèvement tous les mois'):'Prélèvement tous les ans',myAddr:'75011 Paris',note:fam?'Offre famille · frais de port offerts':'résiliable',price:m?abo.pm:abo.pa};}
+function hasMonthlyAbo(){return state.items.some(i=>i.type==='abo'&&i.monthly);}
 function scnAbo(){state.items=[aboItem(ABOS[0])];}
 function scnAboKJ(){state.items=[aboItem(ABOS[3])];}
 
@@ -1043,12 +1058,17 @@ function renderRecap(){
   document.getElementById('recapLines').innerHTML=lines.join('');
   setMoney(document.getElementById('recapTotal'),fmt(total()));
   if(document.getElementById('mTotal'))setMoney(document.getElementById('mTotal'),fmt(total()));
-  // Klarna : indisponible sur les abonnements (Stripe). Sous 100 euros = teaser avec le restant (pousse aussi le panier vers 100), au-dela = 3x actif.
-  const klBase=state.items.length>0&&!state.items.some(i=>i.type==='abo');
+  // Klarna (regle 19/10, test bac a sable) : 3x possible avec abo annuel, PAS avec un abo mensuel.
+  // Sous 100 euros = teaser avec le restant, condition dite d'emblee (pousse le panier vers 100 sans fausse promesse).
+  // Klarna seulement pour la France (Samuel 19/10). En vrai : pays de l'IP (Cloudflare) avant l'adresse, puis pays de livraison.
+  const klFR=state.country==='FR';
+  const klBase=klFR&&state.items.length>0&&!hasMonthlyAbo();
+  const klMonthlyBlock=klFR&&hasMonthlyAbo()&&total()>=100;
   const _k=document.getElementById('plKlarna');if(_k)_k.style.display=klBase?'flex':'none';
-  softVis(document.getElementById('klarnaHint'),klBase,'flex');
+  softVis(document.getElementById('klarnaHint'),klBase||klMonthlyBlock,'flex');
   const _kt=document.getElementById('klarnaTxt');
-  if(_kt&&klBase)_kt.innerHTML=total()>=100?'Payable en <b>3&times; sans frais</b>':`3&times; sans frais dès 100&nbsp;€ · <b>plus que ${fmt(100-total())}</b>`;
+  if(_kt&&klBase)_kt.innerHTML=total()>=100?'Payable en <b>3&times; sans frais</b>':`3&times; sans frais dès 100&nbsp;€ <span class="kx">hors abonnement mensuel</span> · <b class="nw">plus que ${fmt(100-total())}</b>`;
+  else if(_kt&&klMonthlyBlock)_kt.innerHTML='Paiement en 3&times; indisponible avec un abonnement mensuel';
   softVis(document.getElementById('giftNote'),hasCoffret(),'block');
   if(!hasCoffret()){const _w=document.getElementById('giftNoteWrap');if(_w&&_w.dataset.vis==='1'){_w.dataset.vis='0';_w.style.display='none';document.getElementById('giftNoteTxt').value='';document.getElementById('giftNoteLink').textContent='Ajouter un mot personnalisé';}}
 }
@@ -1118,15 +1138,15 @@ function flashCartLine(nm){
 }
 function renderExpress(){
   const b=document.getElementById('expressBlock');if(!b)return;
-  softVis(b,!(state.items.length===0||state.items.some(i=>i.type==='abo')));
+  softVis(b,state.items.length>0); // wallets aussi avec un abo (19/10 : la carte du wallet est enregistree pour les renouvellements)
 }
 let payMethod='card';
 function renderPayMethods(){
   const tabs=document.getElementById('pmTabs');if(!tabs)return;
-  const klOk=state.items.length>0&&total()>=100&&!state.items.some(i=>i.type==='abo');
+  const klOk=state.country==='FR'&&state.items.length>0&&total()>=100&&!hasMonthlyAbo();
   if(!klOk&&payMethod==='klarna')payMethod='card';
   tabs.classList.toggle('hidden',!klOk);
-  const wOk=state.items.length>0&&!state.items.some(i=>i.type==='abo');
+  const wOk=state.items.length>0;
   document.getElementById('payWallets').classList.toggle('hidden',!wOk);
   document.getElementById('payWalletsOr').classList.toggle('hidden',!wOk);
   document.getElementById('payOrLbl').classList.toggle('hidden',klOk||wOk);
@@ -1316,12 +1336,29 @@ function exitRupture(openId){
 document.getElementById('ruCoffret').addEventListener('click',()=>exitRupture('coffretModal'));
 document.getElementById('ruCC').addEventListener('click',()=>exitRupture('gcModal'));
 document.getElementById('ruAbo').addEventListener('click',()=>exitRupture('aboModal'));
-document.getElementById('aboGrid').innerHTML=ABOS.map((a,i)=>`<div class="gco" data-abo="${i}"><img class="gci" src="${IMGD}abos/${a.key}.jpg" alt=""><div class="gct"><div class="n">${a.k}</div><div class="d">${a.d}</div><div class="go">Choisir cet abonnement →</div></div></div>`).join('');
+// Picker abo en 2 temps : 1) quel abonnement, 2) quelle formule (simule le choix de formule du parcours abo,
+// AVANT le parametrage et le questionnaire : le client sait des ce moment si le 3x est possible).
+function renderAboGrid(){
+  document.getElementById('aboGrid').innerHTML=ABOS.map((a,i)=>`<div class="gco" data-abo="${i}"><img class="gci" src="${IMGD}abos/${a.key}.jpg" alt=""><div class="gct"><div class="n">${a.k}</div><div class="d">${a.d}</div><div class="go">Choisir cet abonnement →</div></div></div>`).join('');
+}
+function renderAboPlans(i){
+  const a=ABOS[i];const nh=a.key==='nh';
+  const permo=fmt(Math.round(a.pa/12*100)/100);
+  document.getElementById('aboGrid').innerHTML=`<div class="ab-plans">
+    <button type="button" class="cf-back ab-back" data-back="1">‹ Retour aux abonnements</button>
+    <div class="ab-t">${a.k}</div>
+    <button type="button" class="ab-plan" data-abo="${i}" data-plan="m"><span class="ab-pl">${nh?'Tous les 3 mois':'Mensuel'}</span><span class="ab-pr">${fmt(a.pm)}${nh?' / 3 mois':' / mois'}</span></button>
+    <button type="button" class="ab-plan" data-abo="${i}" data-plan="a"><span class="ab-pl">${nh?'4 coffrets':'Annuel'}${nh?'':' <small>soit '+permo+' / mois</small>'}${state.country==='FR'?`<span class="ab-kl"><span class="kbadge">Klarna</span> ou 3 &times; ${fmt(Math.round(a.pa/3*100)/100)} sans frais</span>`:''}</span><span class="ab-pr">${fmt(a.pa)}${nh?'':' / an'}</span></button>
+  </div>`;
+}
+renderAboGrid();
 document.getElementById('aboModal').addEventListener('click',e=>{
-  if(e.target.id==='aboModal'||e.target.id==='aboClose'){document.getElementById('aboModal').classList.remove('show');return;}
+  if(e.target.id==='aboModal'||e.target.id==='aboClose'){document.getElementById('aboModal').classList.remove('show');renderAboGrid();return;}
+  if(e.target.closest('[data-back]')){renderAboGrid();return;}
+  const pl=e.target.closest('.ab-plan');
+  if(pl){document.getElementById('aboModal').classList.remove('show');pushItem(aboItem(ABOS[+pl.dataset.abo],false,pl.dataset.plan==='m'));renderAboGrid();renderAll();return;}
   const el=e.target.closest('.gco');if(!el)return;
-  document.getElementById('aboModal').classList.remove('show');
-  pushItem(aboItem(ABOS[+el.dataset.abo]));renderAll();
+  renderAboPlans(+el.dataset.abo);
 });
 // --- Duo (Coffret + Kube Originale, seule la durée change) ---
 // Prix carte cadeau France port inclus. Mensuels = clés en mois ; NH = clés en nombre de coffrets (trimestriel).
