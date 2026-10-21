@@ -783,7 +783,9 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 <div class="gcmodal" id="aboModal">
   <div class="gcbox">
     <div class="hd"><h3>Quel abonnement&nbsp;?</h3><button class="cl" id="aboClose">✕</button></div>
-    <div class="hint">Choisissez votre formule. Vous préciserez ensuite l'adresse et vos goûts de lecture, puis vous reviendrez au panier.</div>
+    <div class="hint" id="aboHint">Choisissez l'abonnement. Vous préciserez ensuite la formule, l'adresse et vos goûts de lecture, puis vous reviendrez au panier.</div>
+    <!-- 21/10 : écran = futur écran RÉEL. Le clic sur un abonnement quitte le panier pour le parcours abonnement : la règle Klarna est dite ICI. -->
+    <div id="aboKlarna" style="font-size:12.5px;color:var(--ink2);background:#F6F3EE;border-radius:10px;padding:9px 12px;margin:-6px 0 16px" hidden></div>
     <div class="gcgrid" id="aboGrid"></div>
   </div>
 </div>
@@ -791,13 +793,13 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 <!-- MODALE mini-grille abos (couture "ajouter une CC") -->
 <div class="gcmodal" id="gcModal">
   <div class="gcbox">
-    <div class="hd"><h3>Quel abonnement offrir&nbsp;?</h3><button class="cl" id="gcClose">✕</button></div>
+    <div class="hd"><h3>Quelle carte cadeau offrir&nbsp;?</h3><button class="cl" id="gcClose">✕</button></div>
     <div class="hint">Choisissez la box à offrir. Vous sélectionnerez ensuite la durée et le mode de réception, puis vous reviendrez au panier.</div>
     <div class="gcgrid" id="gcGrid"></div>
     <!-- Étape 2 (21/10) : mode de réception choisi dans le configurateur /coupons. Simulé ici pour montrer chaque ligne du panier. -->
     <div id="gcStep2" hidden>
       <button class="cf-back" id="gcBack">‹ Retour aux abonnements</button>
-      <div class="hint" id="gcStep2Hint"></div>
+      <div class="hint" id="gcStep2Hint" style="border:1.5px dashed var(--line-strong);border-radius:10px;padding:9px 12px;font-size:12px"></div>
       <div class="gcenv" id="gcEnv"></div>
     </div>
   </div>
@@ -921,6 +923,8 @@ function scnMulti(){scnSolo();state.items.push(coffret('Le Coffret livres Polar'
 // monthly : formule mensuelle (NH = trimestriel, jamais "mensuel"). Klarna 3x indisponible si un abo mensuel est au panier (test bac a sable 19/10).
 function aboItem(abo,fam,monthly){const nh=abo.key==='nh';const m=!!monthly;return {type:'abo',name:'Abonnement '+abo.k,aboImg:CCIMG[abo.k],isKJ:abo.key==='kj',monthly:m&&!nh,cadence:m?(nh?'Prélèvement tous les 3 mois':'Prélèvement tous les mois'):'Prélèvement tous les ans',myAddr:'75011 Paris',note:fam?'Offre famille · frais de port offerts':'résiliable',price:m?abo.pm:abo.pa};}
 function hasMonthlyAbo(){return state.items.some(i=>i.type==='abo'&&i.monthly);}
+// 20/10 (Samuel + Alex) : sur le 29/10, pas de Klarna dès qu'il y a un abonnement (mensuel OU annuel). Klarna = Coffrets et cartes cadeaux.
+function hasAbo(){return state.items.some(i=>i.type==='abo');}
 function scnAbo(){state.items=[aboItem(ABOS[0])];}
 function scnAboKJ(){state.items=[aboItem(ABOS[3])];}
 
@@ -1089,17 +1093,18 @@ function renderRecap(){
   document.getElementById('recapLines').innerHTML=lines.join('');
   setMoney(document.getElementById('recapTotal'),fmt(total()));
   if(document.getElementById('mTotal'))setMoney(document.getElementById('mTotal'),fmt(total()));
-  // Klarna (regle 19/10, test bac a sable) : 3x possible avec abo annuel, PAS avec un abo mensuel.
+  // Klarna : règle du 20/10, aucun abonnement. Texte 21/10 (option A) : panier sans condition ; la règle est dite une seule fois, dans la fenêtre « S'abonner », avant le parcours abonnement (remplace la règle du 19/10 « possible avec un abo annuel »).
   // Sous 100 euros = teaser avec le restant, condition dite d'emblee (pousse le panier vers 100 sans fausse promesse).
   // Klarna seulement pour la France (Samuel 19/10). En vrai : pays de l'IP (Cloudflare) avant l'adresse, puis pays de livraison.
   const klFR=state.country==='FR';
-  const klBase=klFR&&state.items.length>0&&!hasMonthlyAbo();
-  const klMonthlyBlock=klFR&&hasMonthlyAbo()&&total()>=100;
+  const klBase=klFR&&state.items.length>0&&!hasAbo();
+  // 21/10 (Samuel) : plus de message « Paiement en 3× indisponible avec un abonnement » : avec un abonnement, on n'affiche simplement rien.
+  const klMonthlyBlock=false;
   const _k=document.getElementById('plKlarna');if(_k)_k.style.display=klBase?'flex':'none';
   softVis(document.getElementById('klarnaHint'),klBase||klMonthlyBlock,'flex');
   const _kt=document.getElementById('klarnaTxt');
-  if(_kt&&klBase)_kt.innerHTML=total()>=100?'Payable en <b>3&times; sans frais</b>':`3&times; sans frais dès 100&nbsp;€ <span class="kx">hors abonnement mensuel</span> · <b class="nw">plus que ${fmt(100-total())}</b>`;
-  else if(_kt&&klMonthlyBlock)_kt.innerHTML='Paiement en 3&times; indisponible avec un abonnement mensuel';
+  if(_kt&&klBase)_kt.innerHTML=total()>=100?'Payable en <b>3&times; sans frais</b> <span class="kx">hors abonnement</span>':`3&times; sans frais dès 100&nbsp;€ <span class="kx">hors abonnement</span> · <b class="nw">plus que ${fmt(100-total())}</b>`;
+  else if(_kt&&klMonthlyBlock)_kt.innerHTML='Paiement en 3&times; indisponible avec un abonnement';
   softVis(document.getElementById('giftNote'),hasCoffret(),'block');
   if(!hasCoffret()){const _w=document.getElementById('giftNoteWrap');if(_w&&_w.dataset.vis==='1'){_w.dataset.vis='0';_w.style.display='none';document.getElementById('giftNoteTxt').value='';document.getElementById('giftNoteLink').textContent='Ajouter un mot personnalisé';}}
 }
@@ -1198,7 +1203,7 @@ function renderExpress(){
 let payMethod='card';
 function renderPayMethods(){
   const tabs=document.getElementById('pmTabs');if(!tabs)return;
-  const klOk=state.country==='FR'&&state.items.length>0&&total()>=100&&!hasMonthlyAbo();
+  const klOk=state.country==='FR'&&state.items.length>0&&total()>=100&&!hasAbo();
   if(!klOk&&payMethod==='klarna')payMethod='card';
   tabs.classList.toggle('hidden',!klOk);
   const wOk=state.items.length>0;
@@ -1347,11 +1352,11 @@ document.getElementById('gcModal').addEventListener('click',e=>{if(e.target.id==
 document.getElementById('gcGrid').innerHTML=ABOS.map((a,i)=>`<div class="gco" data-abo="${i}"><img class="gci" src="${IMGD}abos/${a.key}.jpg" alt=""><div class="gct"><div class="n">${a.k}</div><div class="d">${a.dg}</div><div class="go">Choisir cet abonnement →</div></div></div>`).join('');
 // 21/10 : après l'abonnement, choix du mode de réception (en réel : dans le configurateur /coupons, puis retour panier).
 function gcStep(n){document.getElementById('gcGrid').style.display=n===1?'':'none';document.getElementById('gcStep2').hidden=n!==2;
-  document.querySelector('#gcModal .hd h3').innerHTML=n===1?'Quel abonnement offrir&nbsp;?':'Comment la carte voyage-t-elle&nbsp;?';
+  document.querySelector('#gcModal .hd h3').innerHTML=n===1?'Quelle carte cadeau offrir&nbsp;?':'Comment la carte voyage-t-elle&nbsp;?';
   document.querySelector('#gcModal .gcbox > .hint').hidden=n!==1;}
 document.querySelectorAll('#gcGrid .gco').forEach(el=>el.addEventListener('click',()=>{
   const ai=+el.dataset.abo,a=ABOS[ai];
-  document.getElementById('gcStep2Hint').textContent=`Carte cadeau ${a.k}. Démo : en vrai, ce choix se fait dans le configurateur de la carte cadeau, puis la carte revient au panier.`;
+  document.getElementById('gcStep2Hint').innerHTML=`<b>Demo only, simplified.</b> In production, this choice is made in the gift card configurator (/coupons) for ${a.k}, then the card comes back to the cart. This screen stands in for it.`;
   document.getElementById('gcEnv').innerHTML=ECRINS.map((e,ei)=>[e,ei]).filter(([e])=>(!e.only||e.only===a.key)&&e.not!==a.key).map(([e,ei])=>`<button class="gce" data-abo="${ai}" data-ek="${ei}"><span><span class="n">${e.k==='email'?e.nm:'Dans '+e.art+' '+e.nm}</span><span class="d" style="display:block">${e.d}</span></span><span class="p">${e.price?'+ '+fmt(e.price):'Inclus'}</span></button>`).join('');
   gcStep(2);
 }));
@@ -1391,7 +1396,7 @@ function fillAstroModal(){
 }
 fillAstroModal();
 // picker "ajouter un abonnement"
-document.getElementById('addAbo').addEventListener('click',()=>document.getElementById('aboModal').classList.add('show'));
+document.getElementById('addAbo').addEventListener('click',()=>{renderAboGrid();document.getElementById('aboModal').classList.add('show');});
 // boutons de rebond de l'écran "Ce Coffret est épuisé" : on ressort de l'état épuisé puis on ouvre la modale
 function exitSoldout(){document.getElementById('soldoutBlock').classList.add('hidden');document.getElementById('cartBlock').classList.remove('hidden');document.querySelector('aside').style.visibility='visible';}
 document.getElementById('soCoffret').addEventListener('click',()=>{exitSoldout();document.getElementById('coffretModal').classList.add('show');});
@@ -1411,17 +1416,23 @@ document.getElementById('ruAbo').addEventListener('click',()=>exitRupture('aboMo
 // Picker abo en 2 temps : 1) quel abonnement, 2) quelle formule (simule le choix de formule du parcours abo,
 // AVANT le parametrage et le questionnaire : le client sait des ce moment si le 3x est possible).
 function renderAboGrid(){
+  // 21/10 soir (Samuel) : version simple, « hors abonnement » dans le panier seulement ; plus de « Bon à savoir » ici.
+  const kn=document.getElementById('aboKlarna'),show=false;
+  kn.hidden=!show;kn.textContent=show?'Bon à savoir : le paiement en 3× sans frais ne s\'applique pas aux abonnements.':'';
+  document.getElementById('aboHint').hidden=false;
   document.getElementById('aboGrid').innerHTML=ABOS.map((a,i)=>`<div class="gco" data-abo="${i}"><img class="gci" src="${IMGD}abos/${a.key}.jpg" alt=""><div class="gct"><div class="n">${a.k}</div><div class="d">${a.d}</div><div class="go">Choisir cet abonnement →</div></div></div>`).join('');
 }
 function renderAboPlans(i){
+  document.getElementById('aboHint').hidden=true;document.getElementById('aboKlarna').hidden=true;
   const a=ABOS[i];const nh=a.key==='nh';
   const permo=fmt(Math.round(a.pa/12*100)/100);
   document.getElementById('aboGrid').innerHTML=`<div class="ab-plans">
     <button type="button" class="cf-back ab-back" data-back="1">‹ Retour aux abonnements</button>
     <div class="ab-t">${a.k}</div>
     <button type="button" class="ab-plan" data-abo="${i}" data-plan="m"><span class="ab-pl">${nh?'Tous les 3 mois':'Mensuel'}</span><span class="ab-pr">${fmt(a.pm)}${nh?' / 3 mois':' / mois'}</span></button>
-    <button type="button" class="ab-plan" data-abo="${i}" data-plan="a"><span class="ab-pl">${nh?'4 coffrets':'Annuel'}${nh?'':' <small>soit '+permo+' / mois</small>'}${state.country==='FR'?`<span class="ab-kl"><span class="kbadge">Klarna</span> ou 3 &times; ${fmt(Math.round(a.pa/3*100)/100)} sans frais</span>`:''}</span><span class="ab-pr">${fmt(a.pa)}${nh?'':' / an'}</span></button>
-  </div>`;
+    <button type="button" class="ab-plan" data-abo="${i}" data-plan="a"><span class="ab-pl">${nh?'4 coffrets':'Annuel'}${nh?'':' <small>soit '+permo+' / mois</small>'}</span><span class="ab-pr">${fmt(a.pa)}${nh?'':' / an'}</span></button>
+    <div class="ab-note" style="border:1.5px dashed var(--line-strong);border-radius:10px;padding:9px 12px;font-size:12px;color:var(--mute);margin-top:4px"><b>Demo only, simplified.</b> In production, clicking a subscription opens the usual subscription funnel (plan, address, reading-taste questionnaire), then the subscription comes back to the cart. This screen stands in for it.</div>
+  </div>`; // 21/10 : la règle Klarna dite AU CHOIX de l'abonnement, pas au paiement
 }
 renderAboGrid();
 document.getElementById('aboModal').addEventListener('click',e=>{
