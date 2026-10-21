@@ -127,6 +127,7 @@ h1.h1{font-family:var(--serif);font-weight:700;font-size:30px;letter-spacing:-.0
 /* validation : champ manquant = bord rouge + message (pattern CC KD) */
 .f.field-err{border-color:#b23b3b!important;}
 .errmsg{color:#b23b3b;font-size:12.5px;margin:-4px 0 10px;}
+.pay-wait{opacity:.55;}.pay-wait .pw-txt{border:1.5px dashed var(--line-strong);border-radius:11px;padding:14px 16px;font-size:13.5px;color:var(--ink2);}
 .sec-h{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-weight:600;font-size:20px;margin-bottom:14px;}
 .sec-h .n{width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none;font-family:var(--sans);}
 
@@ -232,6 +233,7 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 
 .mbar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:50;background:#fff;border-top:1px solid var(--line);padding:12px 18px;padding-bottom:calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.07);align-items:center;justify-content:space-between;gap:12px;}
 @media(max-width:860px){.mbar{display:flex;}.recap .cta{display:none;}}
+.potc{text-align:center;margin-top:12px;font-size:13px;}.potc a{color:var(--ink2);text-decoration:underline;text-underline-offset:2px;}
 .mbar .mt{font-size:12px;color:var(--mute);}.mbar .mt b{display:block;font-family:var(--num);font-weight:700;font-size:18px;color:var(--ink);}
 .mbar .cta{width:auto;margin:0;padding:14px 22px;white-space:nowrap;}
 
@@ -648,6 +650,11 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
         <input class="f" id="adrPhone" name="tel" type="tel" autocomplete="tel" inputmode="tel">
       </div>
 
+      <!-- 21/10 (Samuel) : tant que l'adresse n'est pas complète, l'étape paiement se montre grisée avec ce qui manque (avant : rien n'apparaissait, sans explication). -->
+      <div class="sec pay-wait" id="payWait" hidden>
+        <div class="sec-h"><span class="n">3</span> Coordonnées &amp; paiement</div>
+        <div class="pw-txt" id="payWaitTxt"></div>
+      </div>
       <!-- PAIEMENT -->
       <div class="sec locked" id="secPaiement">
         <div class="sec-h"><span class="n">4</span> Coordonnées &amp; paiement</div>
@@ -673,6 +680,8 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
           <div class="pm-tabs hidden" id="pmTabs">
             <button type="button" class="pm-tab on" data-pm="card">Carte bancaire<small>Visa, Mastercard, Amex…</small></button>
             <button type="button" class="pm-tab" data-pm="klarna"><span class="kbadge">Klarna</span> 3&times; sans frais<small id="pmKlarnaSub">3 mensualités</small></button>
+            <!-- 21/10 : Bancontact, gardé le 12/08 (12 % de clients belges), sur Coffrets et cartes cadeaux ; masqué avec un abonnement, comme Klarna et Le Pot Commun -->
+            <button type="button" class="pm-tab" data-pm="bancontact">Bancontact<small>Carte ou application bancaire</small></button>
           </div>
           <div class="pay-card" id="payCardBox">
             <div class="lbl">Carte bancaire · sécurisé par Stripe</div>
@@ -680,6 +689,9 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
             <div class="grid2"><input class="f" placeholder="MM / AA" style="margin:0"><input class="f" placeholder="CVC" style="margin:0"></div>
           </div>
           <div class="pay-klarna hidden" id="payKlarnaBox">Vous réglez <b id="pkTotal"></b> en <b>3 mensualités de <span id="pkPart"></span></b>, sans frais. À la validation, Klarna ouvre sa fenêtre pour confirmer le paiement. <span style="color:var(--mute)">Sécurisé par Stripe.</span></div>
+          <div class="pay-klarna hidden" id="payBancontactBox">À la validation, votre banque ouvre sa page pour confirmer le paiement de <b id="pbTotal"></b>.</div>
+          <!-- 21/10 (Samuel) : UN seul bouton Payer, dans le récapitulatif qui reste visible en défilant (comme le panier Kube Astro). Sur staging, le seul gros bouton sous le formulaire était « Payer avec Le Pot Commun » : il devient un lien discret (Coffrets et cartes cadeaux, jamais avec un abonnement : décision 01/10). -->
+          <div class="potc" id="potCommun"><a href="#" onclick="return false">Payer à plusieurs avec Le Pot Commun</a></div>
         </div>
       </div>
     </div>
@@ -921,7 +933,24 @@ function scnSolo(){const c=coffret('Coffret Chat');c.img=IMGD+'CHAT.jpg';state.i
 function scnCC(){scnSolo();state.items.push(ccItem(ABOS[0]));}
 function scnMulti(){scnSolo();state.items.push(coffret('Le Coffret livres Polar'));}
 // monthly : formule mensuelle (NH = trimestriel, jamais "mensuel"). Klarna 3x indisponible si un abo mensuel est au panier (test bac a sable 19/10).
-function aboItem(abo,fam,monthly){const nh=abo.key==='nh';const m=!!monthly;return {type:'abo',name:'Abonnement '+abo.k,aboImg:CCIMG[abo.k],isKJ:abo.key==='kj',monthly:m&&!nh,cadence:m?(nh?'Prélèvement tous les 3 mois':'Prélèvement tous les mois'):'Prélèvement tous les ans',myAddr:'75011 Paris',note:fam?'Offre famille · frais de port offerts':'résiliable',price:m?abo.pm:abo.pa};}
+// 21/10 soir : délai de la 1re box = celui des confirmations d'abonnement monespace (KO/KM « sous 20 jours » ; KD, KJ, NH « sous 5 jours ouvrés »).
+// Demo only : en production, reprendre la valeur du tunnel de chaque gamme (KD : réglage admin kbd_delivery_days), jamais en dur.
+function aboDelay(i){return i.aboKey==='ko'||i.aboKey==='km'?'sous 20 jours':'sous 5 jours ouvrés';}
+// Délais différents (ex. KO + KJ) : on nomme chaque gamme, groupée par délai.
+// NH : le premier envoi est un envoi de bienvenue (code monespace nh_delivery_type : « Lettre » en trimestriel, « Colis » en annuel), pas une box.
+function nhWelcome(i){return /3 mois/.test(i.cadence)?'la lettre de bienvenue Nouveaux Horizons':'le colis de bienvenue Nouveaux Horizons';}
+function abosDelay(){const ab=state.items.filter(i=>i.type==='abo'),d=[...new Set(ab.map(aboDelay))];if(d.length===1&&!ab.some(i=>i.aboKey==='nh'))return d[0];
+  const nm=i=>i.aboKey==='nh'?nhWelcome(i):i.name.replace(/^Abonnement /,''),j=a=>a.length>1?a.slice(0,-1).join(', ')+' et '+a[a.length-1]:a[0];
+  return d.map(x=>x+' pour '+j([...new Set(ab.filter(i=>aboDelay(i)===x).map(nm))])).join(', ');}
+// Phrase de l'étape Livraison et morceau de la confirmation, selon les abonnements du panier.
+function aboShipTxt(){const ab=state.items.filter(i=>i.type==='abo');if(!ab.length)return null;
+  if(ab.length===1&&ab[0].aboKey==='nh'){const w=nhWelcome(ab[0]),f=w.startsWith('la ');
+    return {sub:`${w.charAt(0).toUpperCase()+w.slice(1)} est expédié${f?'e':''} séparément, ${aboDelay(ab[0])}.`,conf:`${w} ${aboDelay(ab[0])}`};}
+  const hasNh=ab.some(i=>i.aboKey==='nh'),dl=abosDelay(),sep=dl.includes(' pour ')?' : ':' ';
+  if(hasNh)return {sub:`Le premier envoi de chaque abonnement est expédié séparément :${dl.replace(/^/,' ')}.`,conf:`le premier envoi de chaque abonnement :${' '+dl}`};
+  const one=ab.length===1;
+  return {sub:`La première box de ${one?'votre':'chaque'} abonnement est expédiée séparément${sep===' : '?' : ':', '}${dl}.`,conf:`la première box de ${one?'votre':'chaque'} abonnement${sep}${dl}`};}
+function aboItem(abo,fam,monthly){const nh=abo.key==='nh';const m=!!monthly;return {type:'abo',aboKey:abo.key,name:'Abonnement '+abo.k,aboImg:CCIMG[abo.k],isKJ:abo.key==='kj',monthly:m&&!nh,cadence:m?(nh?'Prélèvement tous les 3 mois':'Prélèvement tous les mois'):'Prélèvement tous les ans',myAddr:'75011 Paris',note:fam?'Offre famille · frais de port offerts':'résiliable',price:m?abo.pm:abo.pa};}
 function hasMonthlyAbo(){return state.items.some(i=>i.type==='abo'&&i.monthly);}
 // 20/10 (Samuel + Alex) : sur le 29/10, pas de Klarna dès qu'il y a un abonnement (mensuel OU annuel). Klarna = Coffrets et cartes cadeaux.
 function hasAbo(){return state.items.some(i=>i.type==='abo');}
@@ -1112,7 +1141,8 @@ function renderCTA(){
   const t=fmt(total());
   const empty=state.items.length===0;
   const txt=empty?'Panier vide':'Payer '+t;
-  [document.getElementById('ctaDesktop'),document.getElementById('ctaMobile')].forEach(b=>{
+  const _pc=document.getElementById('potCommun');if(_pc)_pc.style.display=state.items.some(i=>i.type==='abo')?'none':'';
+  [document.getElementById('ctaDesktop'),document.getElementById('ctaMobile')].forEach(b=>{if(!b)return;
     b.innerHTML=txt;b.disabled=empty;b.style.opacity=empty?'.4':'';b.style.pointerEvents=empty?'none':'';
   });
 }
@@ -1148,8 +1178,12 @@ function renderAdrSub(){
   const nbCf=coffretCount(),nbAs=astroCount();
   // 21/10 : une carte par email avec un Coffret doit aussi être dite (sinon le client peut l'attendre dans le colis).
   const nbMail=state.items.filter(i=>i.type==='cc'&&i.reception==='email').length;
-  const asSplit=nbAs>0&&nbCf>0,split=nbCf>0&&(nbCC>0||nbMail>0||asSplit);
-  const cf=nbCf>1?'vos Coffrets':'votre Coffret';
+  // 21/10 soir : sans Coffret, les petits plus font aussi un colis (code monespace) ; l'abonnement part à part.
+  const accOnly=nbCf===0&&state.items.some(i=>i.type==='accessory'),parcel=nbCf>0||accOnly;
+  const nbAbo=state.items.filter(i=>i.type==='abo').length;
+  const asOnly=!parcel&&nbAs>0;
+  const asSplit=nbAs>0&&parcel,split=(parcel||asOnly)&&(nbCC>0||(nbCf>0&&nbMail>0)||asSplit||nbAbo>0);
+  const cf=accOnly?'vos petits plus':asOnly?(nbAs>1?'vos Kube Astro':'votre Kube Astro'):nbCf>1?'vos Coffrets':'votre Coffret';
   const parts2=[`Ce mode de livraison concerne uniquement ${cf}.`];
   // 21/10 : cas mixtes nommés par MODE D'ENVOI (deux cartes peuvent être de la même gamme) ; la carte du duo est dans son Coffret.
   const mixed=nbMail>0&&nbCC>0;
@@ -1162,7 +1196,8 @@ function renderAdrSub(){
   if(nbCC>0){const ph=state.items.filter(i=>i.type==='cc'&&i.reception!=='email');const one=[...new Set(ph.map(i=>i.ecrinLabel))].length===1;
     const lbl=one?` ${ph[0].ecrinArt==='le'?'dans le':'dans la'} ${ph[0].ecrinLabel}`:' physiques';
     parts2.push(mixed||nbDuo>0?`${nbCC>1?'Les cartes cadeaux'+lbl+' partiront':'La carte cadeau'+lbl+' partira'} à part, à l'adresse choisie lors de ${nbCC>1?'leur':'sa'} personnalisation.`:`${nbCC>1?'Vos cartes cadeaux partiront':'Votre carte cadeau partira'} à part, à l'adresse choisie lors de ${nbCC>1?'leur':'sa'} personnalisation.`);}
-  if(t)t.textContent=split?'Mode de livraison '+(nbCf>1?'des Coffrets':'du Coffret'):'Mode de livraison';
+  if(nbAbo>0)parts2.push(aboShipTxt().sub);
+  if(t)t.textContent=split?'Mode de livraison '+(accOnly?'des petits plus':asOnly?'de Kube Astro':nbCf>1?'des Coffrets':'du Coffret'):'Mode de livraison';
   if(sub){sub.hidden=!split;sub.textContent=split?parts2.join(' '):'';}
 }
 // Révélation AUTOMATIQUE pilotée par l'état (pattern Astro v2) : aucun clic pour dérouler, ça apparaît au fil de la saisie.
@@ -1180,7 +1215,18 @@ function autoReveal(){
   // numérotation calée sur le stepper du haut (Panier · Livraison · Paiement) : l'Adresse fait partie de l'étape Livraison, pas de badge.
   document.querySelector('#secLivraison .sec-h .n').textContent='2';
   document.querySelector('#secPaiement .sec-h .n').textContent=needsShipping()?'3':'2';
+  // étape paiement en attente : dire ce qui manque
+  const pw=document.getElementById('payWait');
+  if(pw){const wait=has&&needsShipping()&&!addressComplete();pw.hidden=!wait;
+    if(wait){const L={adrName:'le prénom et le nom',adrStreet:"l'adresse",adrZip:'le code postal',adrCity:'la ville',adrPhone:'le téléphone'};
+      const miss=reqAddrFields().filter(id=>!document.getElementById(id).value.trim()).map(id=>L[id]);
+      const lst=miss.length>1?miss.slice(0,-1).join(', ')+' et '+miss[miss.length-1]:miss[0];
+      document.getElementById('payWaitTxt').textContent=(miss.length===reqAddrFields().length?'Complétez votre adresse de livraison pour passer au paiement.':'Pour passer au paiement, il manque '+lst+'.');}}
 }
+// 21/10 : un champ obligatoire quitté vide est signalé tout de suite (pas seulement au clic sur Payer)
+document.addEventListener('focusout',e=>{const id=e.target.id;if(!reqAddrFields().includes(id))return;
+  const any=['adrName','adrStreet','adrZip','adrCity','adrPhone'].some(k=>document.getElementById(k).value.trim());
+  if(any&&!e.target.value.trim())markErr(e.target,'Ce champ est requis');});
 // dès qu'un champ adresse change, on réévalue (le paiement se révèle quand l'adresse est complète)
 document.addEventListener('input',e=>{if(['adrName','adrStreet','adrZip','adrCity','adrPhone'].includes(e.target.id))autoReveal();});
 function renderXsell(){
@@ -1204,15 +1250,22 @@ let payMethod='card';
 function renderPayMethods(){
   const tabs=document.getElementById('pmTabs');if(!tabs)return;
   const klOk=state.country==='FR'&&state.items.length>0&&total()>=100&&!hasAbo();
+  // 21/10 (Samuel) : Bancontact ne concerne que la Belgique → onglet seulement si le pays de livraison est la Belgique (comme Klarna réservé à la France)
+  const bcOk=state.country==='BE'&&state.items.length>0&&!hasAbo();
   if(!klOk&&payMethod==='klarna')payMethod='card';
-  tabs.classList.toggle('hidden',!klOk);
+  if(!bcOk&&payMethod==='bancontact')payMethod='card';
+  tabs.classList.toggle('hidden',!klOk&&!bcOk);
+  tabs.querySelector('[data-pm=klarna]').style.display=klOk?'':'none';
+  tabs.querySelector('[data-pm=bancontact]').style.display=bcOk?'':'none';
   const wOk=state.items.length>0;
   document.getElementById('payWallets').classList.toggle('hidden',!wOk);
   document.getElementById('payWalletsOr').classList.toggle('hidden',!wOk);
-  document.getElementById('payOrLbl').classList.toggle('hidden',klOk||wOk);
+  document.getElementById('payOrLbl').classList.toggle('hidden',klOk||bcOk||wOk);
   tabs.querySelectorAll('.pm-tab').forEach(t=>t.classList.toggle('on',t.dataset.pm===payMethod));
-  document.getElementById('payCardBox').classList.toggle('hidden',payMethod==='klarna');
+  document.getElementById('payCardBox').classList.toggle('hidden',payMethod!=='card');
   document.getElementById('payKlarnaBox').classList.toggle('hidden',payMethod!=='klarna');
+  document.getElementById('payBancontactBox').classList.toggle('hidden',payMethod!=='bancontact');
+  document.getElementById('pbTotal').textContent=fmt(total()).replace('&nbsp;',' ');
   if(klOk){document.getElementById('pkTotal').textContent=fmt(total()).replace('&nbsp;',' ');document.getElementById('pkPart').textContent=fmt(total()/3);document.getElementById('pmKlarnaSub').textContent='3 × '+fmt(total()/3).replace('&nbsp;',' ');}
 }
 function renderAll(){const _pb=document.getElementById('promoBox');if(_pb)_pb.style.display=state.items.length?'':'none';const _pl=document.getElementById('promoLink');if(_pl)_pl.style.display=state.items.length?'':'none';renderItems();renderXsell();renderExpress();renderPayMethods();renderNudge();renderRecap();renderCTA();renderSteps();renderFamilyOffer();renderShipOptions();renderAdrSub();autoReveal();}
@@ -1274,10 +1327,14 @@ function renderConfirm(){
   const rows=state.items.map(i=>`<div class="cr"><span>${(i.qty>1?i.qty+' × ':'')+lbl(i)}</span><span>${fmt(amt(i))}</span>${dl(i)}</div>`);
   if(needsShipping()){const m=currentShipList().find(o=>o.k===state.ship)||{};const c=shipCost();
     rows.push(`<div class="cr cr-ship"><span>${m.ot||'Livraison'}<span class="cr-s">${m.od||''}</span></span><span>${c===0?(m.pickup?'Gratuit':'Offerte'):fmt(c)}</span></div>`);}
+  else if(state.items.some(i=>i.type==='abo')){ // 21/10 soir : abonnement sans colis, on donne quand même le délai (Samuel)
+    const cf=aboShipTxt().conf;rows.push(`<div class="cr cr-ship"><span>Livraison<span class="cr-s">${cf.charAt(0).toUpperCase()+cf.slice(1)}</span></span><span>Incluse</span></div>`);}
   { // 21/10 (V1) : rappeler les envois séparés (cartes physiques, Kube Astro) dans la confirmation
+    // 21/10 soir (règle du code monespace) : un colis (Coffrets, ou petits plus seuls) + Kube Astro + chaque carte physique + chaque abonnement.
     const nbCC=state.items.filter(i=>i.type==='cc'&&i.reception!=='email').length,nbAs=astroCount(),nbCf=coffretCount();
-    const n=(nbCf>0?1:0)+(nbCf>0||nbAs>0?(nbAs>0&&nbCf>0?1:0):0)+(nbCC>0?nbCC:0)+(nbCf===0&&nbAs>0?1:0);
-    if(n>1)rows.push(`<div class="cr cr-ship"><span>Votre commande part en ${n} envois<span class="cr-s">${[nbCf>0?(nbCf>1?'les Coffrets':'le Coffret'):'',nbAs>0?'Kube Astro':'',nbCC>0?(nbCC>1?'chaque carte cadeau à son adresse':'la carte cadeau à son adresse'):''].filter(Boolean).join(' · ')}</span></span><span></span></div>`);
+    const nbAcc=state.items.some(i=>i.type==='accessory')?1:0,nbAbo=state.items.filter(i=>i.type==='abo').length;
+    const n=(nbCf>0||nbAcc?1:0)+(nbAs>0?1:0)+nbCC+nbAbo;
+    if(n>1)rows.push(`<div class="cr cr-ship"><span>Votre commande part en ${n} envois<span class="cr-s">${[nbCf>0?(nbCf>1?'les Coffrets':'le Coffret'):nbAcc?'les petits plus':'',nbAs>0?'Kube Astro':'',nbCC>0?(nbCC>1?'chaque carte cadeau à son adresse':'la carte cadeau à son adresse'):'',nbAbo>0?aboShipTxt().conf:''].filter(Boolean).join(' · ')}</span></span><span></span></div>`);
   }
   rows.push(`<div class="cr cr-tot"><span>Total payé</span><span>${fmt(total())}</span></div>`);
   document.getElementById('confirmNext').innerHTML=`<div class="cnh">Votre commande</div>${rows.join('')}`;
