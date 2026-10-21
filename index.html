@@ -456,7 +456,10 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 .cc-panel .pt small{display:block;font-weight:400;color:var(--mute);font-size:11.5px;margin-top:2px;}
 .cc-panel .f{font-size:13.5px;padding:10px 12px;border-radius:8px;}
 .cc-panel .flabel{font-size:11.5px;font-weight:600;color:var(--ink2);margin:0 0 4px;}
-.cc-panel .cce-actions{display:flex;align-items:center;gap:14px;margin-top:4px;}
+.cc-panel .cce-actions{display:flex;align-items:center;gap:14px;margin-top:18px;}
+/* 21/10 soir (Samuel) : carte physique = mot et « De la part de » modifiables, sous l'adresse (imprimés sur la feuille glissée dans la pochette). Carte email : rien de modifiable. */
+.cc-panel .cce-sub{font-size:13px;font-weight:600;color:var(--ink);margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line);}
+.cc-panel textarea.f{resize:vertical;min-height:72px;font-family:var(--sans);}
 .cc-panel .cce-save{border:0;background:var(--ink);color:#fff;border-radius:8px;padding:10px 18px;font-weight:600;font-size:13px;cursor:pointer;font-family:var(--sans);}
 .cc-panel .cce-cancel{border:0;background:none;color:var(--ink2);font-size:12.5px;text-decoration:underline;text-underline-offset:2px;cursor:pointer;font-family:var(--sans);}
 .card{transition:border-radius .25s ease,margin-bottom .25s ease;}
@@ -1081,6 +1084,11 @@ function renderItems(){
         <div style="font-size:12px;color:var(--mute);margin:0 0 12px">Prérempli avec le pays de l'abonnement. Le changer ne modifie pas le prix de la carte.</div>
         <label class="flabel">Téléphone (pour la livraison)</label>
         <input class="f cce-phone" value="${escA(i.phone)}" type="tel" inputmode="tel" autocomplete="tel">
+        <div class="cce-sub">Le mot glissé avec la carte</div>
+        <label class="flabel">Votre mot (facultatif)</label>
+        <textarea class="f cce-note" rows="3" maxlength="192" placeholder="192 caractères maximum">${escA(i.note||'')}</textarea>
+        <label class="flabel">De la part de (facultatif)</label>
+        <input class="f cce-author" value="${escA(i.author||'')}" autocomplete="name">
         <div class="cce-actions"><button class="cce-save" data-ccsave="${idx}">Enregistrer</button><button class="cce-cancel" data-cccancel="${idx}">Annuler</button></div>
       </div>`:''}`;
   }).join('');
@@ -1589,6 +1597,8 @@ document.getElementById('items').addEventListener('click',e=>{
       panel.querySelectorAll('.errmsg').forEach(x=>x.remove());panel.querySelectorAll('.field-err').forEach(x=>{x.classList.remove('field-err');x.removeAttribute('aria-invalid');});
       const miss=['.cce-name','.cce-street','.cce-zip','.cce-city','.cce-phone'].map(c=>panel.querySelector(c)).filter(x=>!x.value.trim());
       if(miss.length){miss.forEach(x=>markErr(x,'Ce champ est requis'));miss[0].focus();return;}
+      const nt=panel.querySelector('.cce-note');if(nt&&nt.value.length>192){markErr(nt,'Votre mot ne peut pas dépasser 192 caractères.');nt.focus();return;}
+      it.note=g('.cce-note');it.author=g('.cce-author');
       if(g('.cce-name'))it.recipient=g('.cce-name');
       if(g('.cce-street'))it.street=g('.cce-street');
       it.street2=g('.cce-street2');
