@@ -265,6 +265,12 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 .gco .gct{padding:12px 14px 14px;}
 @media(max-width:640px){.gco .gci{aspect-ratio:21/9;}}
 .gco:hover{border-color:var(--ink);}
+.gcenv{display:grid;gap:10px;}
+.gce{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:13px 16px;cursor:pointer;font:inherit;color:var(--ink);transition:.15s;}
+.gce:hover{border-color:var(--ink);}
+.gce .n{font-weight:600;font-size:15px;}
+.gce .d{font-size:12.5px;color:var(--mute);margin-top:2px;}
+.gce .p{font-weight:600;font-size:14px;white-space:nowrap;}
 .gco .n{font-family:var(--sans);font-weight:600;font-size:15.5px;}
 .gco .d{font-size:13px;color:var(--mute);margin-top:2px;}
 .gco .go{display:inline-block;margin-top:9px;font-size:12.5px;font-weight:700;color:var(--eyebrow);}
@@ -600,7 +606,9 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
 
       <!-- MODE DE LIVRAISON : seul le PAYS pilote les tarifs -> sélecteur pays en tête, puis les modes. Adresse détaillée ensuite. -->
       <div class="sec locked" id="secLivraison">
-        <div class="sec-h"><span class="n">2</span> Mode de livraison</div>
+        <div class="sec-h"><span class="n">2</span> <span id="shipTitle">Mode de livraison</span></div>
+        <!-- 21/10 (V1) : carte physique + Coffret = deux colis, annoncés AVANT le paiement -->
+        <div class="sub" id="shipSub" style="margin:-8px 0 14px" hidden></div>
         <label for="adrCountry" style="display:block;font-size:12.5px;color:var(--mute);margin:-4px 0 6px">Pays de livraison</label>
         <select class="f" id="adrCountry" style="margin-bottom:14px" autocomplete="country">
           <option value="FR" selected>🇫🇷&nbsp; France métropolitaine</option>
@@ -786,6 +794,12 @@ textarea.f:focus{outline:none;border-color:var(--ink);}
     <div class="hd"><h3>Quel abonnement offrir&nbsp;?</h3><button class="cl" id="gcClose">✕</button></div>
     <div class="hint">Choisissez la box à offrir. Vous sélectionnerez ensuite la durée et le mode de réception, puis vous reviendrez au panier.</div>
     <div class="gcgrid" id="gcGrid"></div>
+    <!-- Étape 2 (21/10) : mode de réception choisi dans le configurateur /coupons. Simulé ici pour montrer chaque ligne du panier. -->
+    <div id="gcStep2" hidden>
+      <button class="cf-back" id="gcBack">‹ Retour aux abonnements</button>
+      <div class="hint" id="gcStep2Hint"></div>
+      <div class="gcenv" id="gcEnv"></div>
+    </div>
   </div>
 </div>
 
@@ -884,10 +898,24 @@ function shipPrice(k){const o=currentShipList().find(x=>x.k===k);return o?o.pric
 function coffret(nm,vr){return {type:'coffret',eb:'Édition limitée',nm,vr:vr||'Le coffret seul',scarce:true,price:75,qty:1};}
 const escA=v=>String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 let ccEditIdx=null; // ligne CC dont l'editeur d'adresse est ouvert (null = ferme)
-function ccItem(abo){const nh=abo.key==='nh';const dur=nh?1:3;const durLbl=nh?'1 coffret':'3 mois';return {type:'cc',abo:abo.k,ccImg:CCIMG[abo.k],duration:durLbl,reception:'physique',recipient:'Léa Martin',street:'12 rue de la Roquette',street2:'',zip:'75011',city:'Paris',phone:'06 12 34 56 78',ccCountry:'FR',recipientZip:'75011 Paris',aboPrice:CCDUO[abo.key][dur],ecrin:true,ecrinLabel:'Pochette Cadeau',ecrinPrice:7.90};}
+// Modes de réception du configurateur /coupons, relevés en ligne le 21/10 (prix France). Le panier ne fait qu'afficher.
+// KO, KM, NH : email, pochette, Kit, Coffrets Polar n°8 et Japon. KD : idem avec Fantasy au lieu de Japon.
+// KJ : email, pochette, 4 Box de Bienvenue par âge (20,90), 2 Coffrets jeunesse (59,90). Pas de Kit.
+// L'écrin Coffret (plein tarif) est une offre distincte du duo de la page Coffret (tranché le 14/08).
+const ECRINS=[
+  {k:'email',nm:'Par email',d:'La carte en PDF, à imprimer ou à transférer, juste après le paiement.',price:0},
+  {k:'pochette',nm:'Pochette Cadeau',art:'la',d:'Par courrier, dans une jolie Pochette Cadeau.',price:7.90},
+  {k:'kit',nm:'Kit de lecture',art:'le',d:'Les indispensables du lecteur.',price:17.90,not:'kj'},
+  {k:'coffret',nm:'Coffret Livres Polar n°8',art:'le',d:'Autres choix : Coffret Japon (Coffret Fantasy pour Kube Dessinée).',price:79.90,not:'kj'},
+  {k:'kj',nm:'Box de Bienvenue 4-5 ans',art:'la',d:'2 livres, un magazine et une surprise. Aussi pour les moins de 2 ans, 8-9 ans et 10-12 ans.',price:20.90,only:'kj'},
+  {k:'coffret',nm:'Coffret Livres Je découvre les animaux',art:'le',d:'Pour les 3-4 ans. Autre choix : Mes premières découvertes (5-6 ans).',price:59.90,only:'kj'},
+];
+// Pays d'envoi de la carte physique (décision Samuel 19/10) : prérempli avec le pays de l'abonnement, modifiable, sans effet sur le prix.
+const CC_PAYS={FR:'France métropolitaine',BE:'Belgique',LU:'Luxembourg',CH:'Suisse',DE:'Allemagne',ES:'Espagne',IT:'Italie',OM:"France d'Outre-Mer",CA:'Canada',US:'États-Unis',WORLD:'Autre pays'};
+function ccItem(abo,ek){const nh=abo.key==='nh';const dur=nh?1:3;const durLbl=nh?'1 coffret':'3 mois';const e=ECRINS[ek==null?1:+ek];const mail=e.k==='email';return {type:'cc',abo:abo.k,ccImg:CCIMG[abo.k],duration:durLbl,reception:mail?'email':'physique',recipient:'Léa Martin',street:'12 rue de la Roquette',street2:'',zip:'75011',city:'Paris',phone:'06 12 34 56 78',ccCountry:'FR',recipientZip:'75011 Paris',aboPrice:CCDUO[abo.key][dur],ecrin:!mail,ecrinKind:e.k,ecrinLabel:e.nm,ecrinArt:e.art||'',ecrinPrice:e.price};}
 function ccTotal(i){return i.aboPrice+(i.ecrin?i.ecrinPrice:0);}
 
-function scnSolo(){state.items=[coffret('Le Coffret livres Chat')];}
+function scnSolo(){const c=coffret('Coffret Chat');c.img=IMGD+'CHAT.jpg';state.items=[c];} // 21/10 : même nom que dans le sélecteur (sinon deux lignes « Chat »)
 function scnCC(){scnSolo();state.items.push(ccItem(ABOS[0]));}
 function scnMulti(){scnSolo();state.items.push(coffret('Le Coffret livres Polar'));}
 // monthly : formule mensuelle (NH = trimestriel, jamais "mensuel"). Klarna 3x indisponible si un abo mensuel est au panier (test bac a sable 19/10).
@@ -1001,7 +1029,7 @@ function renderItems(){
         <img class="im" src="${i.ccImg||IMG_COFFRET}" alt="">
         <button class="x" data-rm="${idx}">✕</button>
         <div class="bd"><div class="eb">Carte cadeau</div><div class="nm">${i.abo} · ${i.duration}</div>
-          <div class="meta">${i.reception==='email'?'Par email':`Dans la ${i.ecrinLabel} <span class="liv">· ${escA(i.recipient)}, ${escA(i.zip)} ${escA(i.city)}</span> <button class="ccedit" data-ccedit="${idx}">Modifier</button>`}</div></div>
+          <div class="meta">${i.reception==='email'?'Par email':`Dans ${i.ecrinArt||'la'} ${i.ecrinLabel} <span class="liv">· ${escA(i.recipient)}, ${escA(i.zip)} ${escA(i.city)}${i.ccCountry&&i.ccCountry!=='FR'?', '+CC_PAYS[i.ccCountry]:''}</span> <button class="ccedit" data-ccedit="${idx}">Modifier</button>`}</div></div>
         <div class="pr">${fmt(ccTotal(i))}</div></div>${i.reception!=='email'?`
       <div class="cc-panel${ccEditIdx===idx?'':''}" data-ccpanel="${idx}"${ccEditIdx===idx?' style="display:block" data-vis="1"':''}>
         <div class="pt">Adresse d'envoi de la carte<small>Pour modifier la formule ou la durée, retirez la carte et ajoutez-en une nouvelle.</small></div>
@@ -1015,6 +1043,9 @@ function renderItems(){
           <div><label class="flabel">Code postal</label><input class="f cce-zip" value="${escA(i.zip)}" inputmode="numeric" autocomplete="postal-code"></div>
           <div><label class="flabel">Ville</label><input class="f cce-city" value="${escA(i.city)}" autocomplete="address-level2"></div>
         </div>
+        <label class="flabel">Pays</label>
+        <select class="f cce-country" autocomplete="country" style="margin-bottom:4px">${Object.entries(CC_PAYS).map(([c,n])=>`<option value="${c}"${c===i.ccCountry?' selected':''}>${n}</option>`).join('')}</select>
+        <div style="font-size:12px;color:var(--mute);margin:0 0 12px">Prérempli avec le pays de l'abonnement. Le changer ne modifie pas le prix de la carte.</div>
         <label class="flabel">Téléphone (pour la livraison)</label>
         <input class="f cce-phone" value="${escA(i.phone)}" type="tel" inputmode="tel" autocomplete="tel">
         <div class="cce-actions"><button class="cce-save" data-ccsave="${idx}">Enregistrer</button><button class="cce-cancel" data-cccancel="${idx}">Annuler</button></div>
@@ -1102,9 +1133,32 @@ function renderAdrSub(){
     ?'Indiquez le nom de la personne qui vient chercher '+(parts.length?parts.join(' et '):'vos articles')+'.'
     :'Cette adresse concerne la livraison de '+(parts.length?parts.join(' et de '):'vos articles')+'.';
   const nbCC=state.items.filter(i=>i.type==='cc'&&i.reception!=='email').length;
-  if(nbCC===1)txt+=' Votre carte cadeau sera envoyée à l\'adresse choisie lors de sa personnalisation.';
-  else if(nbCC>1)txt+=' Vos cartes cadeaux seront envoyées aux adresses choisies lors de leur personnalisation.';
+  // 21/10 : avec un Coffret, l'envoi séparé de la carte est déjà annoncé au mode de livraison (#shipSub) : pas de doublon ici.
+  if(nbC===0&&nbCC===1)txt+=' Votre carte cadeau sera envoyée à l\'adresse choisie lors de sa personnalisation.';
+  else if(nbC===0&&nbCC>1)txt+=' Vos cartes cadeaux seront envoyées aux adresses choisies lors de leur personnalisation.';
   el.textContent=txt;
+  // 21/10 (V1, une ligne = un envoi) : carte physique + article à livrer = colis séparés, dit avant le paiement.
+  const t=document.getElementById('shipTitle'),sub=document.getElementById('shipSub');
+  // Appel du 21/10 14h (Samuel, Anthony, Aurore) : le dire dès le mode de livraison. Kube Astro part aussi à part (autre lieu d'envoi).
+  const nbCf=coffretCount(),nbAs=astroCount();
+  // 21/10 : une carte par email avec un Coffret doit aussi être dite (sinon le client peut l'attendre dans le colis).
+  const nbMail=state.items.filter(i=>i.type==='cc'&&i.reception==='email').length;
+  const asSplit=nbAs>0&&nbCf>0,split=nbCf>0&&(nbCC>0||nbMail>0||asSplit);
+  const cf=nbCf>1?'vos Coffrets':'votre Coffret';
+  const parts2=[`Ce mode de livraison concerne uniquement ${cf}.`];
+  // 21/10 : cas mixtes nommés par MODE D'ENVOI (deux cartes peuvent être de la même gamme) ; la carte du duo est dans son Coffret.
+  const mixed=nbMail>0&&nbCC>0;
+  const nbDuo=state.items.filter(i=>i.type==='coffret'&&i.duoLabel).reduce((s,i)=>s+i.qty,0);
+  if(nbDuo>0)parts2.push(`${nbDuo>1?'Les cartes cadeaux des offres duo voyagent':'La carte cadeau de l\'offre duo voyage'} dans ${nbDuo>1?'leur':'son'} Coffret.`);
+  if(nbMail>0)parts2.push(mixed||nbDuo>0?`${nbMail>1?'Les cartes cadeaux envoyées':'La carte cadeau envoyée'} par email ${nbMail>1?'arrivent':'arrive'} juste après le paiement.`:`${nbMail>1?'Vos cartes cadeaux arrivent':'Votre carte cadeau arrive'} par email, juste après le paiement.`);
+  // Délai Astro = celui de la page Kube Astro en ligne (21/10) : « Expédition sous 5 jours ouvrés ». Pas de date précise
+  // tant que le vrai délai et la date limite de Noël ne sont pas confirmés par Anthony (question ouverte le 21/10).
+  if(asSplit)parts2.push(`${nbAs>1?'Vos Kube Astro partiront':'Votre Kube Astro partira'} dans un envoi séparé, à la même adresse, sous 5 jours ouvrés.`);
+  if(nbCC>0){const ph=state.items.filter(i=>i.type==='cc'&&i.reception!=='email');const one=[...new Set(ph.map(i=>i.ecrinLabel))].length===1;
+    const lbl=one?` ${ph[0].ecrinArt==='le'?'dans le':'dans la'} ${ph[0].ecrinLabel}`:' physiques';
+    parts2.push(mixed||nbDuo>0?`${nbCC>1?'Les cartes cadeaux'+lbl+' partiront':'La carte cadeau'+lbl+' partira'} à part, à l'adresse choisie lors de ${nbCC>1?'leur':'sa'} personnalisation.`:`${nbCC>1?'Vos cartes cadeaux partiront':'Votre carte cadeau partira'} à part, à l'adresse choisie lors de ${nbCC>1?'leur':'sa'} personnalisation.`);}
+  if(t)t.textContent=split?'Mode de livraison '+(nbCf>1?'des Coffrets':'du Coffret'):'Mode de livraison';
+  if(sub){sub.hidden=!split;sub.textContent=split?parts2.join(' '):'';}
 }
 // Révélation AUTOMATIQUE pilotée par l'état (pattern Astro v2) : aucun clic pour dérouler, ça apparaît au fil de la saisie.
 // Livraison + Adresse dès qu'il y a un article physique ; le PAIEMENT n'apparaît que quand l'adresse est remplie
@@ -1132,9 +1186,10 @@ function renderXsell(){
 }
 function flashCartLine(nm){
   const idx=state.items.findIndex(i=>i.type==='accessory'&&i.nm===nm);if(idx<0)return;
-  const c=document.querySelectorAll('#items > .card')[idx];if(!c)return;
+  // 21/10 : retrouver LA ligne par son bouton (pas par sa position) et la centrer, hors de l'en-tête fixe.
+  const r=document.querySelector(`#items [data-rm="${idx}"]`),c=r&&r.closest('.card');if(!c)return;
   c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');
-  c.scrollIntoView({behavior:'smooth',block:'nearest'});
+  c.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function renderExpress(){
   const b=document.getElementById('expressBlock');if(!b)return;
@@ -1202,15 +1257,23 @@ function renderConfirm(){
   // Carte cadeau : bouton de téléchargement du PDF sur chaque ligne CC, quel que soit le mode d'envoi (= comportement actuel monespace, orders/show.html.erb → order_path(format: 'pdf')).
   // Duo aussi (GO Samuel 19/09) : la carte glissée dans le Coffret est téléchargeable, même bouton.
   // Textes selon l'envoi (Samuel 19/09) : email = le PDF est le cadeau ; pochette / duo = le PDF est un bonus « déjà là » (jamais « au cas où »).
-  const ccTxt=i=>i.type==='coffret'?['Votre carte voyage dans le Coffret',"Envie de l'offrir sans attendre ? La voici en PDF."]
+  // 21/10 : textes validés par Samuel le 19/10, « carte cadeau » partout, 4 cas (email, pochette, Kit ou box KJ, Coffret ou duo).
+  const PDFB="Envie de l'offrir sans attendre ? La voici en PDF.";
+  const ccTxt=i=>i.type==='coffret'||i.ecrinKind==='coffret'?['Votre carte cadeau voyage dans le Coffret',PDFB]
     :i.reception==='email'?['Votre carte cadeau est prête','À imprimer ou à transférer par email.']
-    :['Votre carte part dans sa pochette',"Envie de l'offrir sans attendre ? La voici en PDF."];
+    :i.ecrinKind==='kit'||i.ecrinKind==='kj'?['Votre carte cadeau voyage dans votre colis',PDFB]
+    :['Votre carte cadeau part dans sa pochette',PDFB];
   const CCPG='<div class="ccpg" aria-hidden="true"><i class="bt"></i><i class="in"></i><i class="tt">CARTE<br>CADEAU</i><i class="cd"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="bb"></i><i class="md"></i></div>';
   const dl=i=>{if(!(i.type==='cc'||(i.type==='coffret'&&i.duoLabel)))return '';const [t,d]=ccTxt(i);
     return `<div class="dlw"><div class="ccdl">${CCPG}<div class="ccdl-txt"><div class="ccdl-t">${t}</div><div class="ccdl-d">${d}</div></div><a class="ccdl-go" role="button" tabindex="0" onclick="return false" aria-label="Télécharger la carte cadeau en PDF"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Télécharger</a></div></div>`;};
   const rows=state.items.map(i=>`<div class="cr"><span>${(i.qty>1?i.qty+' × ':'')+lbl(i)}</span><span>${fmt(amt(i))}</span>${dl(i)}</div>`);
   if(needsShipping()){const m=currentShipList().find(o=>o.k===state.ship)||{};const c=shipCost();
     rows.push(`<div class="cr cr-ship"><span>${m.ot||'Livraison'}<span class="cr-s">${m.od||''}</span></span><span>${c===0?(m.pickup?'Gratuit':'Offerte'):fmt(c)}</span></div>`);}
+  { // 21/10 (V1) : rappeler les envois séparés (cartes physiques, Kube Astro) dans la confirmation
+    const nbCC=state.items.filter(i=>i.type==='cc'&&i.reception!=='email').length,nbAs=astroCount(),nbCf=coffretCount();
+    const n=(nbCf>0?1:0)+(nbCf>0||nbAs>0?(nbAs>0&&nbCf>0?1:0):0)+(nbCC>0?nbCC:0)+(nbCf===0&&nbAs>0?1:0);
+    if(n>1)rows.push(`<div class="cr cr-ship"><span>Votre commande part en ${n} envois<span class="cr-s">${[nbCf>0?(nbCf>1?'les Coffrets':'le Coffret'):'',nbAs>0?'Kube Astro':'',nbCC>0?(nbCC>1?'chaque carte cadeau à son adresse':'la carte cadeau à son adresse'):''].filter(Boolean).join(' · ')}</span></span><span></span></div>`);
+  }
   rows.push(`<div class="cr cr-tot"><span>Total payé</span><span>${fmt(total())}</span></div>`);
   document.getElementById('confirmNext').innerHTML=`<div class="cnh">Votre commande</div>${rows.join('')}`;
 }
@@ -1280,14 +1343,23 @@ document.getElementById('giftNoteLink').addEventListener('click',()=>{
 // couture "ajouter une CC" : mini-grille -> (redirection configurateur) -> ligne CC
 document.getElementById('addCC').addEventListener('click',()=>document.getElementById('gcModal').classList.add('show'));
 document.getElementById('gcClose').addEventListener('click',()=>document.getElementById('gcModal').classList.remove('show'));
-document.getElementById('gcModal').addEventListener('click',e=>{if(e.target.id==='gcModal')e.target.classList.remove('show');});
+document.getElementById('gcModal').addEventListener('click',e=>{if(e.target.id==='gcModal'){e.target.classList.remove('show');gcStep(1);}});
 document.getElementById('gcGrid').innerHTML=ABOS.map((a,i)=>`<div class="gco" data-abo="${i}"><img class="gci" src="${IMGD}abos/${a.key}.jpg" alt=""><div class="gct"><div class="n">${a.k}</div><div class="d">${a.dg}</div><div class="go">Choisir cet abonnement →</div></div></div>`).join('');
+// 21/10 : après l'abonnement, choix du mode de réception (en réel : dans le configurateur /coupons, puis retour panier).
+function gcStep(n){document.getElementById('gcGrid').style.display=n===1?'':'none';document.getElementById('gcStep2').hidden=n!==2;
+  document.querySelector('#gcModal .hd h3').innerHTML=n===1?'Quel abonnement offrir&nbsp;?':'Comment la carte voyage-t-elle&nbsp;?';
+  document.querySelector('#gcModal .gcbox > .hint').hidden=n!==1;}
 document.querySelectorAll('#gcGrid .gco').forEach(el=>el.addEventListener('click',()=>{
-  const a=ABOS[+el.dataset.abo];
-  document.getElementById('gcModal').classList.remove('show');
-  // en réel : redirige vers le configurateur CC (/coupons?kube_type=...) puis retour panier.
-  pushItem(ccItem(a));renderAll();
+  const ai=+el.dataset.abo,a=ABOS[ai];
+  document.getElementById('gcStep2Hint').textContent=`Carte cadeau ${a.k}. Démo : en vrai, ce choix se fait dans le configurateur de la carte cadeau, puis la carte revient au panier.`;
+  document.getElementById('gcEnv').innerHTML=ECRINS.map((e,ei)=>[e,ei]).filter(([e])=>(!e.only||e.only===a.key)&&e.not!==a.key).map(([e,ei])=>`<button class="gce" data-abo="${ai}" data-ek="${ei}"><span><span class="n">${e.k==='email'?e.nm:'Dans '+e.art+' '+e.nm}</span><span class="d" style="display:block">${e.d}</span></span><span class="p">${e.price?'+ '+fmt(e.price):'Inclus'}</span></button>`).join('');
+  gcStep(2);
 }));
+document.getElementById('gcBack').addEventListener('click',()=>gcStep(1));
+document.getElementById('gcEnv').addEventListener('click',e=>{const b=e.target.closest('.gce');if(!b)return;
+  document.getElementById('gcModal').classList.remove('show');gcStep(1);
+  pushItem(ccItem(ABOS[+b.dataset.abo],b.dataset.ek));renderAll();});
+document.getElementById('gcClose').addEventListener('click',()=>gcStep(1));
 
 // grille "ajouter un coffret" : coffrets + éditions spéciales (Astro/Calendrier)
 function fillCoffretModal(){
@@ -1390,8 +1462,11 @@ document.getElementById('cfdPills').addEventListener('click',e=>{const b=e.targe
 document.getElementById('cfdAdd').addEventListener('click',()=>{
   const item=coffret(cfCur.nm);item.img=cfCur.img;item.price=cfCur.price;
   if(cfMode==='duo'){item.price=cfDuoPrice();item.duoDur=cfDur;item.duoLabel="Offre duo · "+ABONM[cfAbo]+" "+durLbl(cfDur,CCDUR[cfAbo].u)+" · Pochette Cadeau offerte";item.duoAbo=cfAbo;}
-  pushItem(item);
+  // 21/10 : même Coffret, même formule (seul, ou duo identique) déjà au panier = +1 sur la ligne, pas de doublon.
+  const same=state.items.find(i=>i.type==='coffret'&&!i.astro&&i.nm===item.nm&&(i.duoLabel||'')===(item.duoLabel||''));
+  if(same)same.qty+=1;else pushItem(item);
   document.getElementById('coffretModal').classList.remove('show');cfBrowseView();renderAll();
+  if(same){const k=state.items.indexOf(same),r=document.querySelector(`#items [data-rm="${k}"]`),c=r&&r.closest('.card');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');c.scrollIntoView({behavior:'smooth',block:'center'});}}
 });
 document.getElementById('coffretModal').addEventListener('click',e=>{
   if(e.target.id==='coffretModal'||e.target.id==='cfClose'){document.getElementById('coffretModal').classList.remove('show');cfBrowseView();return;}
@@ -1453,6 +1528,7 @@ document.getElementById('items').addEventListener('click',e=>{
       if(g('.cce-city'))it.city=g('.cce-city');
       if(g('.cce-phone'))it.phone=g('.cce-phone');
       it.recipientZip=it.zip+' '+it.city;
+      it.ccCountry=g('.cce-country')||it.ccCountry;
       ccEditIdx=null;softVis(panel,false);const card=panel.previousElementSibling;if(card)card.classList.remove('cc-open');
       setTimeout(renderAll,260);
     }
